@@ -1,0 +1,6 @@
+name: AeroDesk local
+variables:
+  - name: base_url
+    value: http://localhost:8000
+  - name: token
+    value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkBhZXJvZGVzay5uZyIsInJvbGUiOiJTdXBlcl9BZG1pbiIsInN0YWZmX2lkIjoxLCJleHAiOjE3ODI0NjYzNjR9.fOaoyzj9nZhROH58Djrlyc6KJSmFJmOsbRFaSNZJYuo
