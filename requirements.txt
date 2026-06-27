@@ -22,8 +22,8 @@ python-multipart==0.0.12
 python-dotenv==1.0.1
 
 # Validation
-pydantic==2.9.2
-pydantic-settings==2.5.2
+pydantic==2.7.4
+pydantic-settings==2.1.0
 
 # Date utilities
 python-dateutil==2.9.0
