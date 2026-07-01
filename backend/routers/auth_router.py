@@ -7,7 +7,7 @@
 #   GET  /auth/me     — return current logged-in staff profile
 # =============================================================
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -23,32 +23,7 @@ from backend.schemas.auth_schemas import LoginRequest, TokenResponse
 router = APIRouter()
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Authenticate a staff member with email and password.
-    Returns a JWT access token and staff profile on success.
-    Returns HTTP 401 if credentials are invalid or account is inactive.
-    """
-    # Find staff by email
-    staff = db.query(Staff).filter(Staff.email == payload.email).first()
-
-    # Validate credentials
-    if not staff or not verify_password(payload.password, staff.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Check account is active
-    if not staff.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account has been deactivated. Contact your administrator.",
-        )
-
-    # Create JWT token
+def _build_token_response(staff: Staff) -> TokenResponse:
     access_token = create_access_token(data={
         "sub":      staff.email,
         "role":     staff.role.value,
@@ -64,56 +39,58 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         role=staff.role,
     )
 
-@router.post("/token", response_model=TokenResponse)
-def login_for_swagger(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    """
-    OAuth2 login endpoint for Swagger Authorize.
-    Accepts form data instead of JSON.
-    """
 
-    # Find staff by email (Swagger sends email in the username field)
-    staff = db.query(Staff).filter(
-        Staff.email == form_data.username
-    ).first()
+def _authenticate_staff(email: str, password: str, db: Session) -> Staff:
+    staff = db.query(Staff).filter(Staff.email == email).first()
 
-    # Validate credentials
-    if not staff or not verify_password(
-        form_data.password,
-        staff.password_hash
-    ):
+    if not staff or not verify_password(password, staff.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check account is active
     if not staff.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account has been deactivated. Contact your administrator.",
         )
 
-    # Create JWT token
-    access_token = create_access_token(
-        data={
-            "sub": staff.email,
-            "role": staff.role.value,
-            "staff_id": staff.staff_id,
-        }
-    )
+    return staff
 
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        staff_id=staff.staff_id,
-        full_name=staff.full_name,
-        email=staff.email,
-        role=staff.role,
-    )
+
+@router.post("/login", response_model=TokenResponse)
+async def login(request: Request, db: Session = Depends(get_db)):
+    """
+    Authenticate a staff member with email and password.
+    Supports both JSON payloads and Swagger-style form data.
+    """
+    content_type = request.headers.get("content-type", "").lower()
+
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form = await request.form()
+        email = form.get("username") or form.get("email")
+        password = form.get("password")
+    else:
+        payload = await request.json()
+        email = payload.get("email")
+        password = payload.get("password")
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Both email and password are required.",
+        )
+
+    staff = _authenticate_staff(email, password, db)
+    return _build_token_response(staff)
+
+@router.post("/token", response_model=TokenResponse)
+async def login_for_swagger(request: Request, db: Session = Depends(get_db)):
+    """
+    Compatibility endpoint for OAuth2 clients that submit form data.
+    """
+    return await login(request, db)
 
 @router.get("/me", response_model=dict)
 def get_me(current_user: Staff = Depends(get_current_user)):
