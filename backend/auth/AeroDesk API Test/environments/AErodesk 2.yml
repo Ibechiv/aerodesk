@@ -1,6 +1,0 @@
-name: AErodesk 2
-variables:
-  - name: base_url
-    value: http://localhost:8000
-  - name: token
-    value: ""
